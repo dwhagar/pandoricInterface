@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 import json
+import os
 import sys
+
+from discord.ext import commands
 
 # Name and version for Configuration checking.  A version mismatch could cause the system to attempt to update
 # the configuration file and fail, resulting in a corrupted configuration.  Configuration files without the proper
@@ -12,7 +14,6 @@ MYNAME = "Pandoric Interface for Discord"
 VERSION = "v0.0 Conceptual Version"
 MYHOME = os.path.dirname(os.path.abspath(__file__))
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Sample Python Script with Config Options')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode')
@@ -20,7 +21,6 @@ def parse_args():
                         help='Path to config file (default: config.json)')
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the configuration to the console and exit')
     return parser.parse_args()
-
 
 def load_config_file(file_path):
     default_config = {'name': MYNAME, 'version': VERSION}
@@ -41,11 +41,15 @@ def load_config_file(file_path):
         try:
             with open(file_path, 'r') as f:
                 config_data = json.load(f)
-                # Validate the required 'name' in the config
+                # Validate the required 'name' in the dictionary
+                # Validate the required key for the Discord bot exists
                 if config_data.get('name') == MYNAME:
                     result = config_data  # Valid configuration loaded from file
+                    if not 'discord_token' in config_data:
+                        sys.exit(f'Error: The configuration file does not contain a discord bot taken, which is a '
+                                 f'required value.')
                 else:
-                    sys.exit(f'Error: The configuration file "{file_path}" is invalid. The "name" variable must match "{MYNAME}".')
+                    sys.exit(f'Error: The configuration file is invalid. The "name" variable must match "{MYNAME}".')
         except json.JSONDecodeError:
             sys.exit(f'Error: The file "{file_path}" is not a valid JSON file. Please specify a valid JSON file.')
 
@@ -58,7 +62,6 @@ def load_config_file(file_path):
             sys.exit(f'Error creating the configuration file "{file_path}": {e}')
 
     return result  # Return the valid bot configuration
-
 
 def save_config_file(filename):
     """
@@ -75,6 +78,45 @@ def save_config_file(filename):
     except Exception as e:
         print(f"Error saving configuration to {filename}: {e}")
 
+def start_discord_bot():
+    prefix = config['command_prefix']
+
+    bot = commands.Bot(command_prefix=prefix, case_insensitive=True, description=MYNAME + " " + VERSION)
+    if args.verbose:
+        print(f'Using command prefix: {prefix}')
+
+    @bot.event
+    async def on_ready():
+        print(f'Logged in as {bot.user.name}')
+
+    @bot.event
+    async def on_command_completion(ctx):
+        if args.verbose:  # Check if verbose mode is enabled
+            print(f"Command '{ctx.command}' was invoked by {ctx.author}")
+
+    @bot.command()
+    async def ping(ctx):
+        await ctx.send('pong')
+
+    async def send_message(ctx, message):
+        # Send the message to the Discord channel
+        await ctx.send(message)
+
+        # Check if verbose mode is enabled and log the message to the console
+        if args['verbose']:
+            print(f"Sent message: {message}")
+
+    @bot.command(name='shutdown')
+    @commands.has_permissions(administrator=True)  # Require administrator permissions
+    async def shutdown(ctx):
+        # Send a message to the channel indicating the bot is shutting down
+        await send_message(ctx, 'Shutting down now.')
+
+        # Close the bot's connection to Discord
+        await bot.close()
+
+    bot_token = config['discord_token']
+    bot.run(bot_token)
 
 def main():
     if args.dump:
@@ -85,8 +127,7 @@ def main():
         print('Verbose mode enabled')
         print('Using configuration file:', args.config)
 
-    # Main script logic goes here if not in dump mode
-
+    start_discord_bot()
 
 if __name__ == "__main__":
     args = parse_args()
